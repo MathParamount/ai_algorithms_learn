@@ -4,8 +4,8 @@ function incremental_complex_train(xh,yh,G,G_1,N_1)
     D = 2;
     M = 20;
     N = 3;
-    N_1 = 4; 
-
+    N_1 = 4;
+    e = 0.05;
 
     %atribution input
     if nargin == 0

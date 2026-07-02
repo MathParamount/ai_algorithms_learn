@@ -1,0 +1,36 @@
+function y = inference(x,W,I,L,M,l_bar)
+    
+    if nargin == 0
+        x = [0; 1];
+        W = [0; 1];
+        I = zeros(G,0); % parameter input
+        L = zeros(1,0); % parameter layer
+        S = numel(x);
+        M =  next_prime(max(max(x(:))+1,S)); % modulus
+        l_bar = log2(M-1); % maximum layer depth
+    end
+
+    S = size(x,1); % number of samples
+    nl = max(L); % number of layers
+    nw = size(W,2); % number of parameter terms
+    X = {x}; 
+    
+    for l = 0:nl, X{l+2} = rem(floor(x/2^(l_bar-l-1)),2); end
+    y = modular_residue(zeros(S,1),M); % output
+
+    for iw = 1:nw
+        w = W(:,iw);
+
+        while ~w(end)
+            w(end) = []; 
+        end
+
+        % current parameters
+        i = I(:,iw); while ~i(end), i(end) = []; end, ni = numel(i); % current inputs
+        l = L(iw); % current layer
+        xs = X{l+1}(:,i)*2.^(0:ni-1)'; % input groups
+        vand_matrix = modular_residue(cumprod([ones(S,1),repmat(xs,[1,S-1])],2),M); % Vandermonde matrix
+        y = y + vand_matrix*w; % reduce error
+    end
+    y = y(:).residue;
+end

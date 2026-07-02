@@ -1,18 +1,17 @@
-function [model,Dy] = train_vect_module(xh,yh,G)
+function train_vect_module(xh,yh,G)
 % xh - modulo M input
 % yh - binary output
 % G - input group size
 % 
 %  Example 1: not gate
 %     xh = [0; 1]; yh = [1; 0]; % dataset
-%     [model,Dy] = train_vect_module(xh,yh) % training
-%     y = model.inference(model, xh);
+%     [model,Deltay] = train_vect_module(xh,yh) % training
+%     y = model.infer(xh) % inference
 %
 %  Example 2: and gate
 %     xh = [0 0; 0 1; 1 0; 1 1]; yh = [0; 0; 0; 1]; % dataset
-%     [model,Dy] = train_vect_module(xh,yh) % training
-%     y = model.inference(xh) % inference
-
+%     [model,Deltay] = train_vect_module(xh,yh) % training
+%     y = model.infer(xh) % inference
 
 % cardinality
 S = numel(yh); % number of samples
@@ -101,12 +100,11 @@ while l <= numel(X) && ~isempty(X{l})
         end
     end
     
-    if ~any(Dyp), break; end
-
+    if ~any(Dyp), 
     l = l + 1;     %incremental layer
 
  end
- model = struct('infer',@(x)inference(x,W,I,L,M,lb),'parameters',W(:,:).residue,...
+ model = struct('infer',@(x)infer(x,W,I,L,M,lb),'parameters',W(:,:).residue,...
      'inputs',I,'layers',L,'modulus',M,'depth',lb);
 
 end
