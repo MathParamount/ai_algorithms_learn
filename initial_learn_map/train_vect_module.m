@@ -1,20 +1,22 @@
-function train_vect_module(xh,yh,G)
+function [model, Dy] = train_vect_module(xh, yh, G)
 % xh - modulo M input
 % yh - binary output
 % G - input group size
 % 
 %  bmai([0; 1],[1; 0])
-
-if nargin < 3
-    xh = [0; 1];
-    yh = [0; 1];
-end
-
+%
+% test to AND implementation
+%
+% x = xh.'; yh = [0; 0; 0; 1]; [model,Dy] = train_vect_module(xh,yh); y = model.inference(xh)
 
 % cardinality
 M = max(xh(:))+1; % modulus
 
 % input arguments
+if nargin < 2
+    xh = [0; 1];
+    yh = [0; 1];
+end
 if nargin < 3
     maxG = max(2, floor(log2(M))); 
     G = randi([2, maxG]);
@@ -27,11 +29,13 @@ l_bus = log2(M-1); % maximum layer depth
 Dy = yh; % starting output error
 W = []; % starting paramter set
 s = randi(10);
+L = zeros(1,0); % parameter layer
+I = zeros(G,0); % parameter input
 
 while l <= numel(X) && ~isempty(X{l})
     % input groups
     N = size(X{l},2);
-    e = randi(s-1);
+    e = randi( max(1, abs(s-1)) );
    
     if G < N
         %combinatorial operation
@@ -63,23 +67,61 @@ while l <= numel(X) && ~isempty(X{l})
         xh_1 = S*P;
 
         %vandermonde matrix
-        v = rem(xh_1,M);
+        %v = repmat(rem(xh_1, M), numel(Dy), 1);
+
+        x1 = xh(:,1);
+        x2 = xh(:,2);
+
+        v = [
+            ones(size(xh,1),1), ...
+            x1, ...
+            x2, ...
+            mod(x1.*x2, M)
+        ];
 
         %consistent error,skip training
-        Dy = min(Dy);
+        Dy = yh;
+
+        %verifing v matrix
+        disp("v =")
+        disp(v)
+
+        disp("size(v)")
+        disp(size(v))
+
+        disp("rank(v)")
+        disp(rank(v))
 
         %incremental weight
-        w = rem(inv(v) * Dy, M);
+        %w = rem(v\Dy, M);
+        w = pinv(v) * Dy;
+        w = mod(w, M);
 
         %output error reduction
-        Dy = Dy - v*w;
+        %Dy = Dy - v*w;
+        Dy = mod(Dy - v*w, M);
 
         %append parameters
-        W = union(W, w);
+        %W = union(W, w);   -> it changes the order, remove repetition,
+        %change dimensionalities
+        W = [W,w];
+
+        L(1,end+1) = l; % append current layer
+        I(1:size(Gs,2),end+1) = Gs(g,:)'; % append input index
+        if ~any(Dy), break, end % stop criterion: null error
     end
     
     l = l + 1;     %incremental layer
 
  end
 
+ model = struct('inference',@(x)inference(x.',W,I,L,M,l_bus),'parameters',modular_residue(W,M),...
+     'inputs',I,'layers',L,'modulus',M,'depth',l_bus);
+end
+
+
+%module residue inplementation
+function r = modular_residue(a, M)
+    % Reduz a matriz/vetor 'a' módulo M
+    r = mod(a, M);
 end

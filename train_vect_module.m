@@ -1,4 +1,4 @@
-function [model,Dy] = train_vect_module(xh,yh,G)
+function [model, Dy] = train_vect_module(xh, yh, G)
 % xh - modulo M input
 % yh - binary output
 % G - input group size
@@ -106,7 +106,7 @@ while l <= numel(X) && ~isempty(X{l})
     l = l + 1;     %incremental layer
 
  end
- model = struct('infer',@(x)inference(x,W,I,L,M,lb),'parameters',W(:,:).residue,...
+ model = struct('inference',@(x)inference(x,W,I,L,M,lb),'parameters',W(:,:).residue,...
      'inputs',I,'layers',L,'modulus',M,'depth',lb);
 
 end

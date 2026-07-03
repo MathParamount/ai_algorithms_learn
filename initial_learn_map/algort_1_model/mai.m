@@ -6,12 +6,12 @@ function [model,Deltay] = mai(xh,yh,G)
 %  Example 1: not gate
 %     xh = [0; 1]; yh = [1; 0]; % dataset
 %     [model,Deltay] = mai(xh,yh) % training
-%     y = model.infer(xh) % inference
+%     y = model.inference(xh) % inference
 %
 %  Example 2: and gate
 %     xh = [0 0; 0 1; 1 0; 1 1]; yh = [0; 0; 0; 1]; % dataset
 %     [model,Deltay] = mai(xh,yh) % training
-%     y = model.infer(xh) % inference
+%     y = model.inference(xh) % inference
 
 %#ok<*AGROW>
 
