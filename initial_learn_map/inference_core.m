@@ -94,6 +94,7 @@ function y = inference_core(x,W,I,L,M,l_bar)
 
         z = mod(z,M);
 
+
         v = [
             ones(S,1), ...
             xs(:,1), ...
@@ -101,7 +102,14 @@ function y = inference_core(x,W,I,L,M,l_bar)
             mod(xs(:,1).* xs(:,end),M);
         ];
 
-        y = mod(y + v*w, M);
+        % prediction function mod
+        y = zeros(S,1);
+
+        for i = 1:S
+            y(i) = v(i,:) * w;
+        end
+
+        y = mod(y, M);
     end
 end
 

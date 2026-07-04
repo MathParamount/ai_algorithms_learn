@@ -31,11 +31,13 @@ function [model, Dy] = train_vect_module(xh, yh)
 % xh = [0 0; 0 1; 1 0; 1 1];
 % yh = [0;0;0;1];
 % [model, ~] = train_vect_module(xh, yh);
-% y = model.inference(xh);
+% y = model.inference(xh');
 % expected = yh;
 % disp('prediction:'); disp(y);
 % disp('expected:'); disp(expected);
-% error = sum(abs(y - expected));
+% yv = y(:); ev = expected(:);
+% n = min(numel(yv), numel(ev));
+% error = sum(abs(yv(1:n) - ev(1:n)));
 % disp('total error:');
 % disp(error);
 

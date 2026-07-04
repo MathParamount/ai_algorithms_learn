@@ -92,17 +92,24 @@ function y = inference_core(x,W,I,L,M,l_bar)
             z = sum(xs,2);
         end
 
-        z = modular_residue(z,M);
-        
+        z = mod(z,M);
+
 
         v = [
-            ones(size(xh,1),1), ...
-            x1, ...
-            x2, ...
-            mod(x1.*x2, M)
+            ones(S,1), ...
+            xs(:,1), ...
+            xs(:,end), ...
+            mod(xs(:,1).* xs(:,end),M);
         ];
 
-        y = mod(y + v*w, M);
+        % prediction 
+        y = zeros(S,1);
+
+        for i = 1:n_samples
+            y(i) = v(i,:) * w;
+        end
+
+        y = mod(y, M);
     end
 end
 
