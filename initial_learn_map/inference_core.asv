@@ -1,6 +1,10 @@
-function y = inference(x,W,I,L,M,l_bar)
+function y = inference_core(x,W,I,L,M,l_bar)
     
     addpath('/home/gabriel-cruz/projects/ai_algorithms_learn/initial_learn_map');
+
+    if nargin < 6
+        error('Inference should be call: model.inference(x)');
+    end
 
     if nargin == 0
         x = [0; 1];
@@ -17,8 +21,16 @@ function y = inference(x,W,I,L,M,l_bar)
     end
 
     S = size(x,1); % number of samples
-    nl = max(L); % number of layers
-    nw = size(W,2); % number of parameter terms
+    
+    % number of layers
+    if isempty(L)
+        nl = 0;
+    else
+        nl = max(L);
+    end
+    
+    % number of parameter terms
+    nw = size(W,2);
 
     X = cell(nl+1,1);
 
@@ -67,7 +79,11 @@ function y = inference(x,W,I,L,M,l_bar)
         
         x_layer = X{layer+1};
 
-        xs = x_layer(:,i);
+        if i > size(x_layer,2)
+            xs = x_layer(:,end);
+        else
+            xs = x_layer(:,i);
+        end
 
         %inputs combination
         if size(xs,2)==1
@@ -78,23 +94,16 @@ function y = inference(x,W,I,L,M,l_bar)
 
         z = modular_residue(z,M);
         
-        K = length(w);
 
-        vand_matrix = ones(S, K);
+        v = [
+            ones(size(xh,1),1), ...
+            x1, ...
+            x2, ...
+            mod(x1.*x2, M)
+        ];
 
-        for k=2:K
-            vand_matrix(:,k)=mod(z.^(k-1),M);
-        end
-
-        vand_matrix = modular_residue(vand_matrix, M);
-        
-        if size(vand_matrix,2)~=length(w)
-            error("Uncompatible dimensons with vandermond and weights.")
-        end
-
-        y = modular_residue(y + vand_matrix*w,M); % reduce error && don't pass of module
+        y = mod(y + v*w, M);
     end
-    y = modular_residue(y(:), M);
 end
 
 

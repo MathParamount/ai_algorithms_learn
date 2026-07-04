@@ -11,7 +11,7 @@ function [model, Dy] = train_vect_module(xh, yh)
 % xh = [ 0 0; 0 1; 1 0; 1 1];
 % yh = [0; 0; 0; 1];
 % [model, Dy] = train_vect_module(xh, yh);
-% disp('train executed without error');
+% disp('Treinamento executado sem erro.');
 % disp('Dy final:');
 % disp(Dy);
 % ------------------
@@ -21,7 +21,7 @@ function [model, Dy] = train_vect_module(xh, yh)
 % xh = [ 0 0; 0 1; 1 0; 1 1];
 % yh = [0; 0; 0; 1];
 % [model,~] = train_vect_module(xh, yh);
-% y = model.inference(xh');
+% y = model.inference(xh);
 % disp('model output: ');
 % disp(y);
 % ------------------
