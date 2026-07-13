@@ -89,11 +89,14 @@ function [model, Deltay] = train_vect_module(xh, yh)
                     %output error reduction
                     error = v * double(w);
 
+                    % output error reduction
                     if size(error,1) < size(Dy,1)
                         error = [error; zeros(size(Dy,1)-size(error,1),1)];
                     elseif size(error,1) > size(Dy,1)
                         error = error(1:size(Dy,1));
                     end
+
+                    % consistent error
                     Dy_temp = modular_residue(real(Dy - error), M);
                     Dy = double(Dy_temp.residue);
 

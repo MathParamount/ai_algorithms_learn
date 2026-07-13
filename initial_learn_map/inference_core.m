@@ -1,12 +1,11 @@
 function y = inference_core(x, W, I, L, M, l_bar)
-    % =============================================
-    % 1. PREPARAÇÃO DOS DADOS
-    % =============================================
+
+    % data prepartion
     if size(x, 1) == 1 && size(x, 2) > 1
         x = x';
     end
     
-    S = size(x, 1);          % número de amostras
+    S = size(x, 1);          % sample number
     y = zeros(S, 1);
     
     if isempty(W)
@@ -14,20 +13,15 @@ function y = inference_core(x, W, I, L, M, l_bar)
         return;
     end
 
-    % 2. CRIAÇÃO DAS CAMADAS REFINADAS
-
-    X = {x};                 % X{1} = entrada original
-    nl = max(L);             % número máximo de camadas
+    X = {x};                 % original input
+    nl = max(L);             %maximum number of layer
 
     for l = 0:nl
         if l <= l_bar
-            % Obtém a camada anterior (X{l+1})
+            % ancient layer(X{l+1})
             Xprev = X{l+1};
             Xnew = zeros(size(Xprev));
             
-            % Aplica a mesma transformação usada no treinamento:
-            % Xnew(:,k) = mod(3 * Xprev(:,k) + k + (l+1), M)
-            % (l+1) alinha com o l usado no treinamento, que começa em 1)
             for k = 1:size(Xprev, 2)
                 Xnew(:, k) = mod(3 * Xprev(:, k) + k + (l + 1), M);
             end
@@ -37,9 +31,7 @@ function y = inference_core(x, W, I, L, M, l_bar)
         end
     end
 
-    % =============================================
-    % 3. INFERÊNCIA (ACUMULAÇÃO DAS PREDIÇÕES)
-    % =============================================
+    % inference
     y_pred = zeros(S, 1);
 
     for iw = 1:length(W)
@@ -48,7 +40,7 @@ function y = inference_core(x, W, I, L, M, l_bar)
             w = w';
         end
 
-        % Recupera os índices de entrada (Gs)
+        % Recover input index
         if iw <= size(I, 2)
             Gs = I(:, iw);
             Gs = Gs(Gs ~= 0);
@@ -56,47 +48,42 @@ function y = inference_core(x, W, I, L, M, l_bar)
             Gs = 1:min(length(w) - 1, size(x, 2));
         end
 
-        % Camada atual
+        % actual layer
         if iw <= length(L)
             l = L(iw);
         else
             l = 1;
         end
 
-        % Seleciona a camada e as colunas correspondentes
+        % select correspondend layer
         X_layer = X{l};
         X_selecionado = X_layer(:, Gs);
 
-        % Combina as entradas (mesmo procedimento do treinamento)
+        %combine input selected with input
         xs = X_selecionado * 2.^(0:length(Gs) - 1)';
         if size(xs, 1) == 1
             xs = xs';
         end
 
-        % =============================================
-        % 4. ORDEM DA MATRIZ DE VANDERMONDE
-        %    (IGUAL AO TREINAMENTO: max(4, length(Gs)))
-        % =============================================
+        % vandermont order
         n = max(4, length(Gs));
 
-        % Constrói a matriz de Vandermonde (módulo M)
+        % vandermont matrix
         V = modular_residue(cumprod([ones(S, 1), repmat(xs, 1, n - 1)], 2), M);
         v = double(V.residue);
 
-        % Ajusta v para o tamanho de w (se necessário)
+        % adjusting v to w length
         if size(v, 2) > length(w)
             v = v(:, 1:length(w));
         elseif size(v, 2) < length(w)
             v = [v, zeros(size(v, 1), length(w) - size(v, 2))];
         end
 
-        % Acumula a contribuição
+        % contribution accumulation
         y_pred = y_pred + v * double(w);
     end
 
-    % =============================================
-    % 5. APLICA MÓDULO E NORMALIZA PARA BINÁRIO
-    % =============================================
+    %apply module and binary normalization
     y_temp = modular_residue(round(y_pred), M);
     y = double(y_temp.residue);
 
