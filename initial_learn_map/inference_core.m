@@ -2,120 +2,86 @@ function y = inference_core(x,W,I,L,M,l_bar)
     
     addpath('/home/gabriel-cruz/projects/ai_algorithms_learn/initial_learn_map');
 
-    if nargin < 6
-        error('Inference should be call: model.inference(x)');
-    end
-
-    if nargin == 0
-        x = [0; 1];
-        W = [0; 1];
-        S = numel(x);
-        M = next_prime(max(max(x(:))+1,S)); % modulus
-        
-        maxG = max(2, floor(log2(M))); 
-        G = randi([2, maxG]);
-
-        I = zeros(G,0); % parameter input
-        L = zeros(1,0); % parameter layer
-        l_bar = log2(M-1); % maximum layer depth
-    end
-
-    S = size(x,1); % number of samples
-    
-    % number of layers
-    if isempty(L)
-        nl = 0;
-    else
-        nl = max(L);
+    if size(x,1) == 1 && size(x,2) > 1
+        x = x';
     end
     
-    % number of parameter terms
-    nw = size(W,2);
-
-    X = cell(nl+1,1);
-
-    X{1}=x;
-
-    for l=2:nl+1
-
-        previous = X{l-1};
-
-        X{l}=mod(previous(:,1:end-1)+previous(:,2:end),M);
+    S = size(x, 1);      % number of features (features in cols)
+    y = zeros(S,1);
+    
+    %lack of weight
+    if isempty(W)
+        warning('No weight available. Returning zeros');        
+        return;
     end
 
-    y = modular_residue(zeros(S,1),M); % output
+    X = {x};
+    nl = max(L);
 
-    for iw = 1:nw
-        w = W(:,iw);
+    %refined layers (superior layer (l+2) )
+    for l= 0:nl
+        if l <= l_bar
+            X{l+2} = rem(floor(x / (2^(l_bar-l-1))),2);
+        else
+            X{l+2} = [];
+        end
+    end
+
+    y_pred = zeros(S,1);    %acumule predictions
+
+    % weight tratment
+    for iw = 1:length(W)
+            w = W{iw};
+
+            if size(w,1) == 1
+                w = w';
+            end
+            
+            if iw <= size(I, 2)
+                Gs = I(:, iw);
+                Gs = Gs(Gs ~= 0);
+            else
+                Gs = 1:min(length(w)-1, size(x, 2));
+            end
+
            
-        %remove zeros
-        idx = find(w~=0);
+            %Layer length verification
+            if iw <= length(L)
+                l = L(iw); % current layer
+            else
+                l = 1;
+            end
 
-        if isempty(idx)
-            continue
-        end
+            %refined layer verification
+            X_layer = X{l};
 
-        w = w(1:idx(end));
+            X_selecionado = X_layer(:, Gs);
+        
+            % Combining inputs (input groups)
+            xs = X_selecionado * 2.^(0:length(Gs)-1)';
+        
+            if size(xs, 1) == 1
+                xs = xs';
+            end
+            
+            %highest order
+            n = length(w);
+        
+            V = modular_residue(cumprod([ones(S, 1), repmat(xs, 1, n-1)], 2), M);
+            v = double(V.residue);
+        
+            %adjusting to w length
+            if size(v, 2) > length(w)
+                v = v(:, 1:length(w));
+            elseif size(v, 2) < length(w)
+                v = [v, zeros(size(v, 1), length(w) - size(v, 2))];
+            end
+            
+            %prediction
+            y_pred = y_pred + v * double(w);
 
-        % current parameters
-        i = I(:,iw);
-        i = i(i~=0); 
-
-        while ~isempty(i) && ~i(end)
-            i(end) = []; 
         end
         
-        ni = numel(i); % current inputs
-
-        if ni == 0
-            continue; % sem entradas, pula termo
-        end
-        
-        layer = L(iw);      %current layer
-
-        if layer+1 > numel(X)
-            continue
-        end
-        
-        x_layer = X{layer+1};
-
-        if i > size(x_layer,2)
-            xs = x_layer(:,end);
-        else
-            xs = x_layer(:,i);
-        end
-
-        %inputs combination
-        if size(xs,2)==1
-            z = xs;
-        else
-            z = sum(xs,2);
-        end
-
-        z = mod(z,M);
-
-
-        v = [
-            ones(S,1), ...
-            xs(:,1), ...
-            xs(:,end), ...
-            mod(xs(:,1).* xs(:,end),M);
-        ];
-
-        % prediction function mod
-        y = zeros(S,1);
-
-        for i = 1:S
-            y(i) = v(i,:) * w;
-        end
-
-        y = mod(y, M);
-    end
-end
-
-
-%module residue inplementation
-function r = modular_residue(a, M)
-    % Reduz a matriz/vetor 'a' módulo M
-    r = mod(a, M);
+        y_temp = modular_residue(round(y_pred), M);
+        y = double(y_temp.residue);
 end

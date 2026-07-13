@@ -6,12 +6,12 @@ function [model,Deltay] = mai(xh,yh,G)
 %  Example 1: not gate
 %     xh = [0; 1]; yh = [1; 0]; % dataset
 %     [model,Deltay] = mai(xh,yh) % training
-%     y = model.inference(xh) % inference
+%     y = model.infer(xh) % inference
 %
 %  Example 2: and gate
 %     xh = [0 0; 0 1; 1 0; 1 1]; yh = [0; 0; 0; 1]; % dataset
 %     [model,Deltay] = mai(xh,yh) % training
-%     y = model.inference(xh) % inference
+%     y = model.infer(xh) % inference
 
 %#ok<*AGROW>
 
@@ -51,7 +51,9 @@ while ~isempty(X{l+1})
    for g = 1:size(Gs,1)
       xs = X{l+1}(:,Gs(g,:))*2.^(0:size(Gs,2)-1)'; % input groups
       V = modular_residue(cumprod([ones(S,1),repmat(xs,[1,S-1])],2),M); % Vandermond matrix
-      [~,~,ju] = unique(xs); Deltayp = accumarray(ju,Deltay,[S,1],@(x)min(x)); Deltayp = Deltayp(ju); % consistent error
+      [~,~,ju] = unique(xs); 
+      Deltayp = accumarray(ju,Deltay,[S,1],@(x)min(x));
+      Deltayp = Deltayp(ju); % consistent error
       if any(Deltayp)
          w = V\Deltayp; % increamental training
          Deltay = Deltay - Deltayp; % output error reduction
@@ -72,6 +74,10 @@ end
 
 function y = infer(x,W,I,L,M,lb)
 S = size(x,1); % number of samples
+
+disp(size(x))
+disp(S)
+
 nl = max(L); % number of layers
 nw = size(W,2); % number of parameter terms
 X = {x}; for l = 0:nl, X{l+2} = rem(floor(x/2^(lb-l-1)),2); end
@@ -82,7 +88,26 @@ for iw = 1:nw
    l = L(iw); % current layer
    xs = X{l+1}(:,i)*2.^(0:ni-1)'; % input groups
    V = modular_residue(cumprod([ones(S,1),repmat(xs,[1,S-1])],2),M); % Vandermonde matrix
-   y = y + V*w; % reduce error
+   y = y + V * w.residue; % reduce error
+
+   disp("Layer")
+   disp(l)
+
+   disp("Inputs")
+   disp(i)
+
+   disp("size(X{l+1})")
+   disp(size(X{l+1}))
+
+   disp("size(xs)")
+   disp(size(xs))
+
+   disp("size(V)")
+   disp(size(V))
+
+   disp("length(w.residue)")
+   disp(length(w.residue))
+   
 end
 y = y(:).residue;
 end

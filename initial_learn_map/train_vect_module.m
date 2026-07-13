@@ -44,16 +44,23 @@ function [model, Dy] = train_vect_module(xh, yh)
 
 % input arguments
 if nargin < 2
-    xh = [0; 1];
-    yh = [0; 1];
+    xh = [0 0; 0 1; 1 0; 1 1];
+    yh = [0; 0; 0; 1];
 end
 
-% cardinality
-M = max(xh(:))+1; % modulus
 
-if nargin < 3
-    maxG = max(2, floor(log2(M))); 
-    G = randi([2, maxG]);
+% cardinality adjust
+if size(xh, 2) == 1
+    M = 2;  % to NOT
+else
+    M = 5;  % to XOR
+end
+
+
+%M = max(xh(:))+1; % modulus
+
+if nargin < 3 || isempty(G)
+    G = size(xh, 2) + 1;  % G = 3;
 end
 
 % initialization
@@ -61,8 +68,8 @@ X = {xh}; % starting input set
 l = 1; % layer counter
 l_bus = log2(M-1); % maximum layer depth
 Dy = yh; % starting output error
-W = []; % starting paramter set
-s = randi(10);
+W = {}; % starting paramter set
+S_rand = randi([0 M-1], size(xh,1), 1); 
 L = zeros(1,0); % parameter layer
 I = zeros(G,0); % parameter input
 
@@ -70,58 +77,101 @@ I = zeros(G,0); % parameter input
 while l <= numel(X) && ~isempty(X{l})
     % input groups
     N = size(X{l},2);
-    e = randi( max(1, abs(s-1)) );
+    e = randi(max(1, abs(S_rand(1)-1)));
    
-    if G < N
+    if G <= N
         %combinatorial operation
-        Gs = nchoosek(1:N,G);
+        Gs = nchoosek(1:N, G);
     else
-        Gs = 0:N;
+        Gs = 1:N;
     end
     
-    g_bus = size(Gs,1);
 
     %refined input
-    if l < l_bus && N > 1
-        x_l_1 = rem(xh*G,M);
+    if l <= l_bus
+        X{l+1} = rem(floor(xh / (2^(l_bus-l-1))),2);
     else
-        x_l_1 = {};
+        X{l+1} = [];
     end
    
     %input ranges
     for g = 1:size(Gs,1) 
-        if g >= rem(M,g_bus)
-            x_g = M/g_bus + 0;
-        else
-            x_g = M/g_bus + 1;
+
+        %calculating G with non-zero values
+        Gs_nonzero = Gs(g, :);
+        Gs_nonzero = Gs_nonzero(Gs_nonzero ~= 0);
+
+        if isempty(Gs_nonzero)
+            continue;
         end
 
-        % input grouping
-        S = sum( (xh/(M-1)) * (x_g(1:g)/(1+e)) );
-        P = prod(x_g(1:g));
-        xh_1 = S*P;
+        xs = X{l}(:, Gs_nonzero) * 2.^(0:length(Gs_nonzero)-1)';
+        
+        n = max(3, length(Gs_nonzero));
+            
+        % verify if xs is a column
+        if size(xs, 1) == 1
+           xs = xs';
+        end
+          
+        % Vandermont matrix
+        V = modular_residue(cumprod([ones(size(xs,1),1), repmat(xs, 1, n-1)], 2), M);
+        v = double(V.residue);      %numerical value
 
-        %vandermonde matrix
-        %v = repmat(rem(xh_1, M), numel(Dy), 1);
 
-        x1 = xh(:,1);
-                
-        if size(xh,2) >= 2
-            x2 = xh(:,2);
-        else
-            x2 = zeros(size(xh,1),1); % no second column, use zeros
+        [~, ~, ju] = unique(xs);
+        Dyp = accumarray(ju, Dy, [], @mean);
+        Dyp = Dyp(ju);
+
+        if any(Dyp)
+
+            [rows_v,cols_v] = size(v);
+            rows_Dy = size(Dy,1);
+
+            if rows_Dy ~= rows_v
+                 if rows_Dy > rows_v
+                      Dy_adj = Dy(1:rows_v);
+                 else
+                      Dy_adj = [Dy; zeros(rows_v - rows_Dy, 1)];
+                 end
+            else
+                Dy_adj = Dy;
+            end
+
+            % increamental training (complete rank)
+            if rank(v) == cols_v
+                w = double(modular_residue(v \ Dy_adj, M).residue);
+            else
+                %rank-deficient (regularization)
+                lambda = 1e-1;
+                w = double(modular_residue((v'*v + lambda*eye(cols_v)) \ (v'*Dy_adj), M).residue);
+            end
+            
+
+            %output error reduction
+            error = v * double(w);
+            if size(error, 1) < size(Dy, 1)
+                error = [error; zeros(size(Dy, 1) - size(error, 1), 1)];        %error size must be same size of Dy
+            elseif size(error, 1) > size(Dy, 1)
+                error = error(1:size(Dy, 1));
+            end
+
+            
+            Dy_temp = modular_residue(real(Dy - error), M);
+            Dy = double(Dy_temp.residue);
+            
+            %Append parameters
+            %change dimensionalities
+            W{end+1} = w;
+
+            L(1,end+1) = l; % append current layer
+            I(1:size(Gs,2),end+1) = Gs(g,:)'; % append input index
+            
+            % stop criterion: null error
+            if ~any(Dy), break, end
         end
 
-        v = [
-            ones(size(xh,1),1), ...
-            x1, ...
-            x2, ...
-            mod(x1.*x2, M)
-        ];
-
-        %consistent error,skip training
-        Dy = yh;
-
+      
         %verifing v matrix
         disp("v =")
         disp(v)
@@ -131,30 +181,20 @@ while l <= numel(X) && ~isempty(X{l})
 
         disp("rank(v)")
         disp(rank(v))
-
-        %incremental weight
-        %w = rem(v\Dy, M);
-        w = pinv(v) * Dy;
-        w = mod(w, M);
-
-        %output error reduction
-        %Dy = Dy - v*w;
-        Dy = mod(Dy - v*w, M);
-
-        %append parameters
-        %W = union(W, w);   -> it changes the order, remove repetition,
-        %change dimensionalities
-        W = [W,w];
-
-        L(1,end+1) = l; % append current layer
-        I(1:size(Gs,2),end+1) = Gs(g,:)'; % append input index
-        if ~any(Dy), break, end % stop criterion: null error
+        
     end
-    
+
+    if ~any(Dy), break, end % stop criterion: null error
     l = l + 1;     %incremental layer
 
  end
 
+ model.W = W;
+ model.I = I;
+ model.L = L;
+ model.M = M;
+ model.l_bus = l_bus;
  model.inference = @(x) inference_core(x, W, I, L, M, l_bus);
+ Deltay = Dy;
 
 end
