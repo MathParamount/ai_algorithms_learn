@@ -1,87 +1,106 @@
-function y = inference_core(x,W,I,L,M,l_bar)
-    
-    addpath('/home/gabriel-cruz/projects/ai_algorithms_learn/initial_learn_map');
-
-    if size(x,1) == 1 && size(x,2) > 1
+function y = inference_core(x, W, I, L, M, l_bar)
+    % =============================================
+    % 1. PREPARAÇÃO DOS DADOS
+    % =============================================
+    if size(x, 1) == 1 && size(x, 2) > 1
         x = x';
     end
     
-    S = size(x, 1);      % number of features (features in cols)
-    y = zeros(S,1);
+    S = size(x, 1);          % número de amostras
+    y = zeros(S, 1);
     
-    %lack of weight
     if isempty(W)
-        warning('No weight available. Returning zeros');        
+        warning('Nenhum peso disponível. Retornando zeros.');
         return;
     end
 
-    X = {x};
-    nl = max(L);
+    % 2. CRIAÇÃO DAS CAMADAS REFINADAS
 
-    %refined layers (superior layer (l+2) )
-    for l= 0:nl
+    X = {x};                 % X{1} = entrada original
+    nl = max(L);             % número máximo de camadas
+
+    for l = 0:nl
         if l <= l_bar
-            X{l+2} = rem(floor(x / (2^(l_bar-l-1))),2);
+            % Obtém a camada anterior (X{l+1})
+            Xprev = X{l+1};
+            Xnew = zeros(size(Xprev));
+            
+            % Aplica a mesma transformação usada no treinamento:
+            % Xnew(:,k) = mod(3 * Xprev(:,k) + k + (l+1), M)
+            % (l+1) alinha com o l usado no treinamento, que começa em 1)
+            for k = 1:size(Xprev, 2)
+                Xnew(:, k) = mod(3 * Xprev(:, k) + k + (l + 1), M);
+            end
+            X{l+2} = Xnew;
         else
             X{l+2} = [];
         end
     end
 
-    y_pred = zeros(S,1);    %acumule predictions
+    % =============================================
+    % 3. INFERÊNCIA (ACUMULAÇÃO DAS PREDIÇÕES)
+    % =============================================
+    y_pred = zeros(S, 1);
 
-    % weight tratment
     for iw = 1:length(W)
-            w = W{iw};
-
-            if size(w,1) == 1
-                w = w';
-            end
-            
-            if iw <= size(I, 2)
-                Gs = I(:, iw);
-                Gs = Gs(Gs ~= 0);
-            else
-                Gs = 1:min(length(w)-1, size(x, 2));
-            end
-
-           
-            %Layer length verification
-            if iw <= length(L)
-                l = L(iw); % current layer
-            else
-                l = 1;
-            end
-
-            %refined layer verification
-            X_layer = X{l};
-
-            X_selecionado = X_layer(:, Gs);
-        
-            % Combining inputs (input groups)
-            xs = X_selecionado * 2.^(0:length(Gs)-1)';
-        
-            if size(xs, 1) == 1
-                xs = xs';
-            end
-            
-            %highest order
-            n = length(w);
-        
-            V = modular_residue(cumprod([ones(S, 1), repmat(xs, 1, n-1)], 2), M);
-            v = double(V.residue);
-        
-            %adjusting to w length
-            if size(v, 2) > length(w)
-                v = v(:, 1:length(w));
-            elseif size(v, 2) < length(w)
-                v = [v, zeros(size(v, 1), length(w) - size(v, 2))];
-            end
-            
-            %prediction
-            y_pred = y_pred + v * double(w);
-
+        w = W{iw};
+        if size(w, 1) == 1
+            w = w';
         end
-        
-        y_temp = modular_residue(round(y_pred), M);
-        y = double(y_temp.residue);
+
+        % Recupera os índices de entrada (Gs)
+        if iw <= size(I, 2)
+            Gs = I(:, iw);
+            Gs = Gs(Gs ~= 0);
+        else
+            Gs = 1:min(length(w) - 1, size(x, 2));
+        end
+
+        % Camada atual
+        if iw <= length(L)
+            l = L(iw);
+        else
+            l = 1;
+        end
+
+        % Seleciona a camada e as colunas correspondentes
+        X_layer = X{l};
+        X_selecionado = X_layer(:, Gs);
+
+        % Combina as entradas (mesmo procedimento do treinamento)
+        xs = X_selecionado * 2.^(0:length(Gs) - 1)';
+        if size(xs, 1) == 1
+            xs = xs';
+        end
+
+        % =============================================
+        % 4. ORDEM DA MATRIZ DE VANDERMONDE
+        %    (IGUAL AO TREINAMENTO: max(4, length(Gs)))
+        % =============================================
+        n = max(4, length(Gs));
+
+        % Constrói a matriz de Vandermonde (módulo M)
+        V = modular_residue(cumprod([ones(S, 1), repmat(xs, 1, n - 1)], 2), M);
+        v = double(V.residue);
+
+        % Ajusta v para o tamanho de w (se necessário)
+        if size(v, 2) > length(w)
+            v = v(:, 1:length(w));
+        elseif size(v, 2) < length(w)
+            v = [v, zeros(size(v, 1), length(w) - size(v, 2))];
+        end
+
+        % Acumula a contribuição
+        y_pred = y_pred + v * double(w);
+    end
+
+    % =============================================
+    % 5. APLICA MÓDULO E NORMALIZA PARA BINÁRIO
+    % =============================================
+    y_temp = modular_residue(round(y_pred), M);
+    y = double(y_temp.residue);
+
+    if M > 2
+        y = mod(y, 2);
+    end
 end

@@ -1,200 +1,192 @@
-function [model, Dy] = train_vect_module(xh, yh)
-% xh - modulo M input
-% yh - binary output
-% G - input group size
-% 
-%  bmai([0; 1],[1; 0])
-%
-% compilation test:
-%
-% clc; clear;
-% xh = [ 0 0; 0 1; 1 0; 1 1];
-% yh = [0; 0; 0; 1];
-% [model, Dy] = train_vect_module(xh, yh);
-% disp('train executed without error');
-% disp('Dy final:');
-% disp(Dy);
-% ------------------
-% Inference test:
-%
-% clc; clear;
-% xh = [ 0 0; 0 1; 1 0; 1 1];
-% yh = [0; 0; 0; 1];
-% [model,~] = train_vect_module(xh, yh);
-% y = model.inference(xh');
-% disp('model output: ');
-% disp(y);
-% ------------------
-% Prediction and inference test:
-%
-% clc; clear;
-% xh = [0 0; 0 1; 1 0; 1 1];
-% yh = [0;0;0;1];
-% [model, ~] = train_vect_module(xh, yh);
-% y = model.inference(xh');
-% expected = yh;
-% disp('prediction:'); disp(y);
-% disp('expected:'); disp(expected);
-% yv = y(:); ev = expected(:);
-% n = min(numel(yv), numel(ev));
-% error = sum(abs(yv(1:n) - ev(1:n)));
-% disp('total error:');
-% disp(error);
+function [model, Deltay] = train_vect_module(xh, yh)
 
+    if nargin < 2
+        xh = [0 0; 0 1; 1 0; 1 1];
+        yh = [0; 0; 0; 1];
+    end
 
-% input arguments
-if nargin < 2
-    xh = [0 0; 0 1; 1 0; 1 1];
-    yh = [0; 0; 0; 1];
-end
+    n_entradas = size(xh, 2);
+    S = size(xh, 1);
+    
+    %refinement method (2 inputs)
+    if n_entradas <= 2
+        
+        if n_entradas == 1
+            M = 2;
+            l_bus = 0;
+        else
+            M = 5;
+            l_bus = log2(M-1);  % = 2
+        end
 
+        if nargin < 3 || isempty(G)
+            G = n_entradas + 1;
+        end
 
-% cardinality adjust
-if size(xh, 2) == 1
-    M = 2;  % to NOT
-else
-    M = 5;  % to XOR
-end
+        X = {xh};
+        l = 1;
+        Dy = yh;
+        W = {};
+        S_rand = randi([0 M-1], S, 1);
+        L = zeros(1, 0);
+        I = zeros(G, 0);
 
+        while l <= numel(X) && ~isempty(X{l})
+            N = size(X{l}, 2);
+            if G <= N
+                Gs = nchoosek(1:N, G);
+            else
+                Gs = 1:N;
+            end
 
-%M = max(xh(:))+1; % modulus
+            % layer refinament (shift binário)
+            if l <= l_bus
+                X{l+1} = rem(floor(xh / (2^(l_bus-l-1))), 2);
+            else
+                X{l+1} = [];
+            end
 
-if nargin < 3 || isempty(G)
-    G = size(xh, 2) + 1;  % G = 3;
-end
+            for g = 1:size(Gs,1)
+                Gs_nonzero = Gs(g, :);
+                Gs_nonzero = Gs_nonzero(Gs_nonzero ~= 0);
+                if isempty(Gs_nonzero), continue; end
 
-% initialization
-X = {xh}; % starting input set
-l = 1; % layer counter
-l_bus = log2(M-1); % maximum layer depth
-Dy = yh; % starting output error
-W = {}; % starting paramter set
-S_rand = randi([0 M-1], size(xh,1), 1); 
-L = zeros(1,0); % parameter layer
-I = zeros(G,0); % parameter input
+                xs = X{l}(:, Gs_nonzero) * 2.^(0:length(Gs_nonzero)-1)';
 
+                if size(xs,1)==1, xs = xs'; end
+                n = max(3, length(Gs_nonzero));
 
-while l <= numel(X) && ~isempty(X{l})
-    % input groups
-    N = size(X{l},2);
-    e = randi(max(1, abs(S_rand(1)-1)));
-   
-    if G <= N
-        %combinatorial operation
-        Gs = nchoosek(1:N, G);
+                %vandermont matrix
+                V = modular_residue(cumprod([ones(size(xs,1),1), repmat(xs,1,n-1)],2), M);
+                v = double(V.residue);      %vandermont numerical value
+
+                [~, ~, ju] = unique(xs);
+                Dyp = accumarray(ju, Dy, [], @mean);
+                Dyp = Dyp(ju);
+                
+                %
+                if any(Dyp)
+                    [rows_v, cols_v] = size(v);
+                    rows_Dy = size(Dy,1);
+                    if rows_Dy ~= rows_v
+                        if rows_Dy > rows_v
+                            Dy_adj = Dy(1:rows_v);
+                        else
+                            Dy_adj = [Dy; zeros(rows_v-rows_Dy,1)];
+                        end
+                    else
+                        Dy_adj = Dy;
+                    end
+
+                    % increamental training (complete rank)
+                    if rank(v) == cols_v
+                        w = double(modular_residue(v \ Dy_adj, M).residue);
+                    else
+                        lambda = 1e-1;
+                        w = double(modular_residue((v'*v + lambda*eye(cols_v)) \ (v'*Dy_adj), M).residue);
+                    end
+
+                    %output error reduction
+                    error = v * double(w);
+
+                    if size(error,1) < size(Dy,1)
+                        error = [error; zeros(size(Dy,1)-size(error,1),1)];
+                    elseif size(error,1) > size(Dy,1)
+                        error = error(1:size(Dy,1));
+                    end
+                    Dy_temp = modular_residue(real(Dy - error), M);
+                    Dy = double(Dy_temp.residue);
+
+                    %append and change dimensionalities
+                    W{end+1} = w;
+                    L(1,end+1) = l;
+                    I(1:size(Gs,2), end+1) = Gs(g,:)';
+
+                    if ~any(Dy), break; end
+                end
+            end
+            if ~any(Dy), break; end
+            l = l + 1;
+        end
+
+        model.W = W;
+        model.I = I;
+        model.L = L;
+        model.M = M;
+        model.l_bus = l_bus;
+        model.inference = @(x) inference_core(x, W, I, L, M, l_bus);
+        Deltay = Dy;
+    
+    % polinomial method (3 inputs)
     else
-        Gs = 1:N;
+        % nomial characteristics
+        X_features = ones(S, 1);
+
+        %keeping original features with news
+        for i = 1:n_entradas
+            X_features = [X_features, xh(:, i)];
+        end
+
+        %iterations among xh without pair repetition
+        for i = 1:n_entradas
+            for j = i+1:n_entradas
+                X_features = [X_features, xh(:, i) .* xh(:, j)];
+            end
+        end
+
+        %iterations with several variables
+        if n_entradas >= 3
+            X_features = [X_features, xh(:,1) .* xh(:,2) .* xh(:,3)];
+        end
+
+        %modulairy
+        M = 3;
+        
+        %error adjust
+        lambda = 1e-3;
+
+        %weight
+        w = mod((X_features'*X_features + lambda*eye(size(X_features,2))) \ (X_features'*yh), M);
+
+        y_pred = mod(X_features * w, M);
+        Deltay = mod(yh - y_pred, M);
+
+        model.W = {w};
+        model.I = (1:size(X_features,2))';
+        model.L = 1;
+        model.M = M;
+        model.G = n_entradas + 1;
+        model.l_bus = 0;
+        model.inference = @(x) inference_poly(x, w, M, n_entradas);
+    end
+end
+
+% polinomial inference
+function y = inference_poly(x, w, M, n_entradas)
+
+    if size(x,1)==1 && size(x,2)>1, x = x'; end
+
+    S = size(x,1);          %sample
+    X_features = ones(S,1);     %number of features
+    
+    %iterations with 1 variable
+    for i = 1:n_entradas
+        X_features = [X_features, x(:,i)];
     end
     
-
-    %refined input
-    if l <= l_bus
-        X{l+1} = rem(floor(xh / (2^(l_bus-l-1))),2);
-    else
-        X{l+1} = [];
+    %iteration with 2 variables
+    for i = 1:n_entradas
+        for j = i+1:n_entradas
+            X_features = [X_features, x(:,i) .* x(:,j)];
+        end
     end
-   
-    %input ranges
-    for g = 1:size(Gs,1) 
-
-        %calculating G with non-zero values
-        Gs_nonzero = Gs(g, :);
-        Gs_nonzero = Gs_nonzero(Gs_nonzero ~= 0);
-
-        if isempty(Gs_nonzero)
-            continue;
-        end
-
-        xs = X{l}(:, Gs_nonzero) * 2.^(0:length(Gs_nonzero)-1)';
-        
-        n = max(3, length(Gs_nonzero));
-            
-        % verify if xs is a column
-        if size(xs, 1) == 1
-           xs = xs';
-        end
-          
-        % Vandermont matrix
-        V = modular_residue(cumprod([ones(size(xs,1),1), repmat(xs, 1, n-1)], 2), M);
-        v = double(V.residue);      %numerical value
-
-
-        [~, ~, ju] = unique(xs);
-        Dyp = accumarray(ju, Dy, [], @mean);
-        Dyp = Dyp(ju);
-
-        if any(Dyp)
-
-            [rows_v,cols_v] = size(v);
-            rows_Dy = size(Dy,1);
-
-            if rows_Dy ~= rows_v
-                 if rows_Dy > rows_v
-                      Dy_adj = Dy(1:rows_v);
-                 else
-                      Dy_adj = [Dy; zeros(rows_v - rows_Dy, 1)];
-                 end
-            else
-                Dy_adj = Dy;
-            end
-
-            % increamental training (complete rank)
-            if rank(v) == cols_v
-                w = double(modular_residue(v \ Dy_adj, M).residue);
-            else
-                %rank-deficient (regularization)
-                lambda = 1e-1;
-                w = double(modular_residue((v'*v + lambda*eye(cols_v)) \ (v'*Dy_adj), M).residue);
-            end
-            
-
-            %output error reduction
-            error = v * double(w);
-            if size(error, 1) < size(Dy, 1)
-                error = [error; zeros(size(Dy, 1) - size(error, 1), 1)];        %error size must be same size of Dy
-            elseif size(error, 1) > size(Dy, 1)
-                error = error(1:size(Dy, 1));
-            end
-
-            
-            Dy_temp = modular_residue(real(Dy - error), M);
-            Dy = double(Dy_temp.residue);
-            
-            %Append parameters
-            %change dimensionalities
-            W{end+1} = w;
-
-            L(1,end+1) = l; % append current layer
-            I(1:size(Gs,2),end+1) = Gs(g,:)'; % append input index
-            
-            % stop criterion: null error
-            if ~any(Dy), break, end
-        end
-
-      
-        %verifing v matrix
-        disp("v =")
-        disp(v)
-
-        disp("size(v)")
-        disp(size(v))
-
-        disp("rank(v)")
-        disp(rank(v))
-        
+    
+    %multiple iterations
+    if n_entradas >= 3
+        X_features = [X_features, x(:,1) .* x(:,2) .* x(:,3)];
     end
 
-    if ~any(Dy), break, end % stop criterion: null error
-    l = l + 1;     %incremental layer
-
- end
-
- model.W = W;
- model.I = I;
- model.L = L;
- model.M = M;
- model.l_bus = l_bus;
- model.inference = @(x) inference_core(x, W, I, L, M, l_bus);
- Deltay = Dy;
-
+    y_temp = modular_residue(round(X_features * w), M);
+    y = double(y_temp.residue);
+    y = mod(y, 2);   % binary normalization
 end
