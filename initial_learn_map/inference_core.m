@@ -73,9 +73,9 @@ function y = inference_core(x, W, I, L, M, l_bar)
         v = double(V.residue);
 
         % adjusting v to w length
-        if size(v, 2) > length(w)
+        if size(V, 2) > length(w)
             v = v(:, 1:length(w));
-        elseif size(v, 2) < length(w)
+        elseif size(V, 2) < length(w)
             v = [v, zeros(size(v, 1), length(w) - size(v, 2))];
         end
 

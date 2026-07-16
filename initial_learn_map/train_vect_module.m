@@ -33,6 +33,7 @@ function [model, Deltay] = train_vect_module(xh, yh)
 
         while l <= numel(X) && ~isempty(X{l})
             N = size(X{l}, 2);
+
             if G <= N
                 Gs = nchoosek(1:N, G);
             else
@@ -47,14 +48,10 @@ function [model, Deltay] = train_vect_module(xh, yh)
             end
 
             for g = 1:size(Gs,1)
-                Gs_nonzero = Gs(g, :);
-                Gs_nonzero = Gs_nonzero(Gs_nonzero ~= 0);
-                if isempty(Gs_nonzero), continue; end
-
-                xs = X{l}(:, Gs_nonzero) * 2.^(0:length(Gs_nonzero)-1)';
+                xs = X{l}(:, Gs) * 2.^(0:length(Gs)-1)';
 
                 if size(xs,1)==1, xs = xs'; end
-                n = max(3, length(Gs_nonzero));
+                n = max(3, length(Gs));
 
                 %vandermont matrix
                 V = modular_residue(cumprod([ones(size(xs,1),1), repmat(xs,1,n-1)],2), M);
@@ -79,13 +76,8 @@ function [model, Deltay] = train_vect_module(xh, yh)
                     end
 
                     % increamental training (complete rank)
-                    if rank(v) == cols_v
-                        w = double(modular_residue(v \ Dy_adj, M).residue);
-                    else
-                        lambda = 1e-1;
-                        w = double(modular_residue((v'*v + lambda*eye(cols_v)) \ (v'*Dy_adj), M).residue);
-                    end
-
+                    w = double(modular_residue(v \ Dy_adj, M).residue);
+                    
                     %output error reduction
                     error = v * double(w);
 
@@ -163,6 +155,7 @@ function [model, Deltay] = train_vect_module(xh, yh)
         model.inference = @(x) inference_poly(x, w, M, n_entradas);
     end
 end
+
 
 % polinomial inference
 function y = inference_poly(x, w, M, n_entradas)
